@@ -3,7 +3,7 @@
  * 離線時退回快取，所以加入主畫面後沒網路也能開。
  * 改版時把 CACHE 的版本號 +1，舊快取會在 activate 時清掉。
  */
-const CACHE = "intern-log-v1";
+const CACHE = "intern-log-v2";
 const ASSETS = [
   "./",
   "./index.html",

@@ -92,10 +92,52 @@
     padding: 9px 10px;
     border: 1px solid var(--line);
     border-radius: 10px;
-    font-size: .95rem;
+    font-size: 16px;      /* 低於 16px 時 iOS 點輸入框會自動放大頁面 */
+    min-height: 44px;     /* iOS 建議的最小觸控目標 */
     font-family: inherit;
     background: #fffdf9;
     color: var(--ink);
+  }
+  /* iOS 的日期／時間輸入框有內建樣式與最小寬度，改成跟其他欄位一致 */
+  input[type="date"], input[type="time"] {
+    -webkit-appearance: none;
+    appearance: none;
+    text-align: left;
+  }
+  /* 顏色選擇器：iOS 預設是一顆小圓球，改成正常大小的色塊欄位 */
+  input[type="color"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 44px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fffdf9;
+    cursor: pointer;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 7px; }
+  /* 檔案選擇：原生按鈕改成跟整體一致的樣式 */
+  input[type="file"] {
+    width: 100%;
+    min-height: 44px;
+    padding: 7px 8px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    background: #fffdf9;
+    font-size: .85rem;
+    color: var(--ink-soft);
+  }
+  input[type="file"]::file-selector-button {
+    font-family: inherit;
+    font-size: .85rem;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent-deep);
+    border-radius: 8px;
+    padding: 5px 12px;
+    margin-right: 10px;
   }
   textarea { resize: vertical; min-height: 64px; }
   input:focus, textarea:focus, select:focus, .editor:focus {
@@ -112,7 +154,7 @@
     border: 1px solid var(--line);
     border-radius: 10px;
     background: #fffdf9;
-    font-size: .95rem;
+    font-size: 16px;
     white-space: pre-wrap;
     overflow-y: auto;
     max-height: 320px;
@@ -300,12 +342,43 @@
   }
   .row-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 
-  /* ===== 響應式 ===== */
+  /* ===== 響應式：手機版整體收緊、欄位固定兩欄、觸控目標放大 ===== */
   @media (max-width: 560px) {
-    .stats { grid-template-columns: repeat(2, 1fr); }
-    header h1 { font-size: 1.4rem; }
-    .card { padding: 16px; }
-    .g-label { flex-basis: 110px; }
+    body { padding: 16px 10px calc(48px + env(safe-area-inset-bottom)); }
+    header { margin-bottom: 18px; }
+    header h1 { font-size: 1.35rem; }
+    header p { font-size: .8rem; }
+    .card { padding: 16px 14px; border-radius: 14px; margin-bottom: 14px; }
+
+    .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat { padding: 10px 8px; border-radius: 12px; }
+    .stat .num { font-size: 1.25rem; }
+    .stat.hero .num { font-size: 1.55rem; }
+
+    /* 表單固定兩欄，避免 auto-fit 在小螢幕擠出奇怪的欄寬 */
+    .form-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-grid > div { min-width: 0; }
+    .form-grid > div[style*="span 2"] { grid-column: span 2; }
+    .inline-num { flex-wrap: nowrap; white-space: nowrap; }
+    .inline-num input { flex: 1; min-width: 0; width: auto; }
+
+    button { padding: 10px 16px; }
+    .row-btns button { flex: 1 1 auto; }
+
+    /* 檢視區間：兩個日期並排、按鈕換行後填滿 */
+    .view-filter input[type="date"] { flex: 1 1 34%; width: auto; min-width: 0; }
+    .view-filter button { flex: 1 1 auto; }
+
+    /* 專案卡：新增／編輯列直接直排 */
+    .add-sub > div, .edit-row > div { flex: 1 1 100%; }
+    .sub .manual { margin-left: 0; flex-basis: 100%; }
+    .sub .manual input { flex: 0 1 70px; }
+    .task { padding: 13px; }
+    .sub { padding: 10px; }
+
+    .g-label { flex-basis: 100px; font-size: .78rem; }
+    th, td { padding: 6px; font-size: .82rem; }
+    #articleOut { font-size: .8rem; }
   }
 </style>
 </head>
@@ -352,9 +425,26 @@
             <option value="date">月份日期</option>
           </select>
         </div>
+        <div>
+          <label for="setWage">預設時薪（元）</label>
+          <input type="number" id="setWage" min="0" step="1" placeholder="例：200">
+        </div>
+        <div>
+          <label for="setRateSel">預設勞退自提</label>
+          <select id="setRateSel">
+            <option value="0">不自提</option>
+            <option value="1">1%</option>
+            <option value="2">2%</option>
+            <option value="3">3%</option>
+            <option value="4">4%</option>
+            <option value="5">5%</option>
+            <option value="6" selected>6%（上限）</option>
+          </select>
+        </div>
       </div>
       <p style="font-size:.78rem;color:var(--ink-soft)">
-        預設時間會自動帶入打卡表單，當天不同再手動調整即可。薪資區間方式決定薪水卡用 Day 編號還是日期來選區間。設定會記住。
+        所有設定都會記在這台裝置上。預設時間會自動帶入打卡表單；時薪與自提比例會帶入薪水卡，
+        跟薪水卡裡的欄位是同一個值，改哪邊都一樣。跨裝置要共用設定，用「備份與同步」搬過去。
       </p>
     </div>
   </section>
@@ -531,7 +621,7 @@
       </div>
       <div>
         <label for="projColor">顏色</label>
-        <input type="color" id="projColor" value="#e8875b" style="height:42px;padding:4px">
+        <input type="color" id="projColor" value="#e8875b">
       </div>
     </div>
     <button id="btnAddProj" class="ghost">新增大專案</button>
@@ -1176,6 +1266,19 @@ $("setPayMode").addEventListener("change", () => {
   updatePay();
   saveState();
 });
+// 預設時薪／自提比例：跟薪水卡是同一個值，兩邊互相同步
+$("setWage").addEventListener("input", () => {
+  settings.hourlyWage = parseFloat($("setWage").value) || 0;
+  $("payHourly").value = $("setWage").value;
+  updatePay();
+  saveState();
+});
+$("setRateSel").addEventListener("change", () => {
+  settings.payRate = parseInt($("setRateSel").value, 10);
+  $("payRate").value = $("setRateSel").value;
+  updatePay();
+  saveState();
+});
 
 // 依設定切換薪水卡的區間輸入方式（Day 編號 vs 日期）
 function applyPayMode() {
@@ -1219,11 +1322,13 @@ $("btnPayToggle").addEventListener("click", () => {
 });
 $("payHourly").addEventListener("input", () => {
   settings.hourlyWage = parseFloat($("payHourly").value) || 0;
+  $("setWage").value = $("payHourly").value;
   updatePay();
   saveState();
 });
 $("payRate").addEventListener("change", () => {
   settings.payRate = parseInt($("payRate").value, 10);
+  $("setRateSel").value = $("payRate").value;
   updatePay();
   saveState();
 });
@@ -1492,7 +1597,7 @@ function buildProjCard(p) {
         <input type="number" class="pe-days" min="0"> 天
         <input type="number" class="pe-hours" min="0" max="23"> 小時
       </div></div>
-      <div><label>顏色</label><input type="color" class="pe-color" style="height:38px;padding:3px"></div>
+      <div><label>顏色</label><input type="color" class="pe-color"></div>
       <div style="flex:0 0 auto">
         <button class="mini pe-save">儲存</button>
         <button class="ghost mini pe-cancel">取消</button>
@@ -2095,6 +2200,8 @@ document.addEventListener("visibilitychange", () => {
   updateHoursPreview();
   $("payHourly").value = settings.hourlyWage || "";
   $("payRate").value = String(settings.payRate);
+  $("setWage").value = settings.hourlyWage || "";
+  $("setRateSel").value = String(settings.payRate);
   $("setPayMode").value = settings.payRangeMode;
   applyPayMode();
   applyPayVisible();
