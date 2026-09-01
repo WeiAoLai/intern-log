@@ -287,10 +287,14 @@
     transition: background .4s, border-color .4s;
   }
   .sub .bar { height: 8px; margin: 8px 0; }
-  .sub .btns, .task .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .sub .btns button { padding: 5px 12px; font-size: .82rem; }
-  .sub .manual { display: inline-flex; gap: 4px; align-items: center; font-size: .8rem; color: var(--ink-soft); margin-left: auto; }
-  .sub .manual input { width: 54px; padding: 4px 6px; font-size: .82rem; }
+  .sub .top { align-items: center; gap: 8px; flex-wrap: nowrap; }
+  .sub .top .name { flex: 1; min-width: 0; }
+  .sub .time { font-size: .82rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+  /* 專案卡標題列：整列可點擊收合，只留名稱與進度條 */
+  .proj-head { cursor: pointer; align-items: center; gap: 8px; }
+  .proj-head .name { flex: 1; min-width: 0; }
+  .proj-head .caret { color: var(--ink-soft); font-size: .8rem; width: 14px; display: inline-block; }
   .add-sub { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; border-top: 1px solid var(--line); padding-top: 12px; }
   .add-sub > div { flex: 1 1 120px; }
   .add-sub .inline-num input { width: 60px; }
@@ -395,8 +399,6 @@
 
     /* 專案卡：新增／編輯列直接直排 */
     .add-sub > div, .edit-row > div { flex: 1 1 100%; }
-    .sub .manual { margin-left: 0; flex-basis: 100%; }
-    .sub .manual input { flex: 0 1 70px; }
     .task { padding: 13px; }
     .sub { padding: 10px; }
 
@@ -574,7 +576,11 @@
 
   <!-- ===== 匯出打卡紀錄 ===== -->
   <section class="card">
-    <h2>匯出打卡紀錄</h2>
+    <h2 class="bar-title">
+      <span>匯出打卡紀錄</span>
+      <button id="btnExpToggle" class="ghost mini">展開</button>
+    </h2>
+    <div id="expBody" hidden>
     <div class="form-grid">
       <div>
         <label for="expMode">區間方式</label>
@@ -610,34 +616,42 @@
       像一頁 Notion 筆記，任何瀏覽器都能開；PDF 會開啟列印視窗，選「儲存為 PDF」即可。
       在 iPhone 上匯出會跳出分享面板，可存到「檔案」、AirDrop 或傳給其他 App。
     </p>
+    </div>
   </section>
 
   <!-- ===== 區塊二：大專案與小項目 ===== -->
   <section class="card">
-    <h2>專案與任務</h2>
-    <div class="form-grid">
-      <div style="grid-column:span 2">
-        <label for="projName">大專案名稱</label>
-        <input type="text" id="projName" placeholder="例：導入建議書">
-      </div>
-      <div>
-        <label for="projStart">開始日期</label>
-        <input type="date" id="projStart">
-      </div>
-      <div>
-        <label>目標時間</label>
-        <div class="inline-num">
-          <input type="number" id="projDays" min="0" value="1"> 天
-          <input type="number" id="projHours" min="0" max="23" value="0"> 小時
+    <h2 class="bar-title">
+      <span>專案與任務</span>
+      <button id="btnProjSecToggle" class="ghost mini">收起</button>
+    </h2>
+    <div id="projSecBody">
+    <button id="btnProjFormToggle" class="ghost">＋ 新增大專案</button>
+    <div id="projForm" hidden style="margin-top:12px">
+      <div class="form-grid">
+        <div style="grid-column:span 2">
+          <label for="projName">大專案名稱</label>
+          <input type="text" id="projName" placeholder="例：導入建議書">
+        </div>
+        <div>
+          <label for="projStart">開始日期</label>
+          <input type="date" id="projStart">
+        </div>
+        <div>
+          <label>目標時間</label>
+          <div class="inline-num">
+            <input type="number" id="projDays" min="0" value="1"> 天
+            <input type="number" id="projHours" min="0" max="23" value="0"> 小時
+          </div>
+        </div>
+        <div>
+          <label for="projColor">顏色</label>
+          <input type="color" id="projColor" value="#e8875b">
         </div>
       </div>
-      <div>
-        <label for="projColor">顏色</label>
-        <input type="color" id="projColor" value="#e8875b">
-      </div>
+      <button id="btnAddProj">建立專案</button>
+      <span id="projEndHint" style="margin-left:12px;color:var(--ink-soft);font-size:.85rem"></span>
     </div>
-    <button id="btnAddProj" class="ghost">新增大專案</button>
-    <span id="projEndHint" style="margin-left:12px;color:var(--ink-soft);font-size:.85rem"></span>
 
     <!-- 檢視區間：只顯示時程與區間重疊的專案，避免結案的專案一直堆著 -->
     <div class="view-filter">
@@ -651,9 +665,10 @@
 
     <div class="task-list" id="projList"></div>
     <p style="font-size:.78rem;color:var(--ink-soft);margin-top:10px">
-      專案進度以底下小項目的投入時間累計；1 天以 8 小時工作時間換算。小項目的「已投入」可手動填，也可以用計時器跑。
-      結案的專案用檢視區間收起來，之後把區間調回去就能再看到，甘特圖也跟著同一個區間。
+      專案進度以底下小項目的投入時間累計；1 天以 8 小時工作時間換算。點專案名稱可收合細項；
+      「已投入」在小項目的 ✎ 編輯裡手動調。結案的專案用檢視區間收起來，之後把區間調回去就能再看到，甘特圖也跟著同一個區間。
     </p>
+    </div>
   </section>
 
   <!-- ===== 甘特圖 ===== -->
@@ -665,7 +680,11 @@
 
   <!-- ===== 備份與同步（跨裝置搬資料用） ===== -->
   <section class="card">
-    <h2>備份與同步</h2>
+    <h2 class="bar-title">
+      <span>備份與同步</span>
+      <button id="btnBackupToggle" class="ghost mini">展開</button>
+    </h2>
+    <div id="backupBody" hidden>
     <div class="row-btns">
       <button id="btnBackup">匯出完整備份</button>
       <button id="btnImport" class="ghost">匯入備份檔</button>
@@ -680,17 +699,23 @@
       傳到 B 裝置（AirDrop 最快）後匯入。「合併」會把兩邊資料加在一起——同一天同時段的打卡視為同一筆
       （保留本機版本），同名專案的小項目取投入時間較多的那個；「完全覆蓋」則整份換成備份檔的內容。
     </p>
+    </div>
   </section>
 
   <!-- ===== 區塊三：統整文章 ===== -->
   <section class="card">
-    <h2>統整成分享文章</h2>
+    <h2 class="bar-title">
+      <span>統整成分享文章</span>
+      <button id="btnArticleToggle" class="ghost mini">展開</button>
+    </h2>
+    <div id="articleBody" hidden>
     <div class="row-btns">
       <button id="btnGen">產生文章</button>
       <button id="btnWeekly" class="ghost">產生週報（近 7 天）</button>
       <button id="btnCopy" class="ghost" disabled>複製全文</button>
     </div>
     <textarea id="articleOut" placeholder="按「產生文章」，會把打卡紀錄、實習內容、專案時間統整成一篇 Markdown 文章，可直接貼到 Notion、部落格或群組分享。"></textarea>
+    </div>
   </section>
 
   <p style="text-align:center">
@@ -717,6 +742,7 @@ const settings = {
   defStart: "09:00", defEnd: "18:00", theme: "warm",
   payRangeMode: "day",      // 薪資區間用 Day 編號或日期
   projFrom: "", projTo: "", // 專案檢視區間（空 = 全部）
+  collapsed: { exp: true, projSec: false, backup: true, article: true },   // 大區塊收合狀態
 };
 
 const $ = (id) => document.getElementById(id);
@@ -758,6 +784,7 @@ function currentState() {
   // 專案只存資料欄位，DOM 與計時器 reload 後重建（一律以暫停狀態還原）
   const projectsLite = projects.map(p => ({
     id: p.id, name: p.name, start: p.start, tDays: p.tDays, tHours: p.tHours, color: p.color,
+    collapsed: !!p.collapsed,
     subs: p.subs.map(s => ({
       id: s.id, name: s.name, start: s.start, tH: s.tH, tM: s.tM,
       elapsedSec: s.elapsedSec, done: s.done, log: s.log || {},
@@ -1366,6 +1393,30 @@ $("setPayMode").addEventListener("change", () => {
   saveState();
 });
 
+/* ---------- 大區塊的收合／展開（狀態會記住） ---------- */
+const SECTION_TOGGLES = [
+  { key: "exp",     btn: "btnExpToggle",     body: "expBody" },
+  { key: "projSec", btn: "btnProjSecToggle", body: "projSecBody" },
+  { key: "backup",  btn: "btnBackupToggle",  body: "backupBody" },
+  { key: "article", btn: "btnArticleToggle", body: "articleBody" },
+];
+
+function applySections() {
+  SECTION_TOGGLES.forEach(({ key, btn, body }) => {
+    const hidden = !!settings.collapsed[key];
+    $(body).hidden = hidden;
+    $(btn).textContent = hidden ? "展開" : "收起";
+  });
+}
+
+SECTION_TOGGLES.forEach(({ key, btn }) => {
+  $(btn).addEventListener("click", () => {
+    settings.collapsed[key] = !settings.collapsed[key];
+    applySections();
+    saveState();
+  });
+});
+
 // 依設定切換薪水卡的區間輸入方式（Day 編號 vs 日期）
 function applyPayMode() {
   const byDate = settings.payRangeMode === "date";
@@ -1605,6 +1656,13 @@ function updateProjEndHint() {
   $(id).addEventListener("input", updateProjEndHint));
 updateProjEndHint();
 
+// 新增大專案的表單也是按了才展開
+$("btnProjFormToggle").addEventListener("click", () => {
+  const f = $("projForm");
+  f.hidden = !f.hidden;
+  if (!f.hidden) $("projName").focus();
+});
+
 $("btnAddProj").addEventListener("click", () => {
   const name = $("projName").value.trim();
   const tDays = parseInt($("projDays").value, 10) || 0;
@@ -1618,9 +1676,11 @@ $("btnAddProj").addEventListener("click", () => {
     start: $("projStart").value,
     tDays, tHours,
     color: $("projColor").value || DEFAULT_PROJ_COLOR,
+    collapsed: false,
     subs: [],
   });
   $("projName").value = "";
+  $("projForm").hidden = true;
   renderProjects();
   saveState();
 });
@@ -1670,34 +1730,32 @@ function buildProjCard(p) {
   card.style.borderLeft = `5px solid ${color}`;
   p.el = card;
   card.innerHTML = `
-    <div class="top">
+    <div class="top proj-head" title="點一下收合／展開">
+      <span class="caret"></span>
       <span class="name"></span>
-      <span class="time proj-meta"></span>
+      <button class="icon-btn proj-edit" title="編輯專案">✎</button>
     </div>
     <div class="bar"><div class="fill"></div></div>
-    <div class="top" style="margin-top:-4px">
-      <span class="time proj-progress"></span>
-      <span style="display:flex;gap:6px">
-        <button class="ghost mini proj-edit">編輯專案</button>
-        <button class="danger proj-remove">移除專案</button>
-      </span>
-    </div>
-    <div class="edit-row proj-edit-row" hidden>
-      <div style="flex:2 1 140px"><label>名稱</label><input type="text" class="pe-name"></div>
-      <div><label>開始日期</label><input type="date" class="pe-start"></div>
-      <div><label>目標時間</label><div class="inline-num">
-        <input type="number" class="pe-days" min="0"> 天
-        <input type="number" class="pe-hours" min="0" max="23"> 小時
-      </div></div>
-      <div><label>顏色</label><input type="color" class="pe-color"></div>
-      <div style="flex:0 0 auto">
-        <button class="mini pe-save">儲存</button>
-        <button class="ghost mini pe-cancel">取消</button>
+    <div class="proj-detail">
+      <div class="time proj-meta"></div>
+      <div class="time proj-progress" style="margin:4px 0 8px"></div>
+      <div class="edit-row proj-edit-row" hidden>
+        <div style="flex:2 1 140px"><label>名稱</label><input type="text" class="pe-name"></div>
+        <div><label>開始日期</label><input type="date" class="pe-start"></div>
+        <div><label>目標時間</label><div class="inline-num">
+          <input type="number" class="pe-days" min="0"> 天
+          <input type="number" class="pe-hours" min="0" max="23"> 小時
+        </div></div>
+        <div><label>顏色</label><input type="color" class="pe-color"></div>
+        <div style="flex:0 0 auto">
+          <button class="mini pe-save">儲存</button>
+          <button class="ghost mini pe-cancel">取消</button>
+          <button class="danger pe-remove">移除專案</button>
+        </div>
       </div>
-    </div>
-    <div class="subs"></div>
-    <button class="ghost mini sub-form-toggle" style="margin-top:2px">＋ 小項目</button>
-    <div class="add-sub" hidden>
+      <div class="subs"></div>
+      <button class="ghost mini sub-form-toggle" style="margin-top:2px">＋ 小項目</button>
+      <div class="add-sub" hidden>
       <div style="flex:2 1 160px">
         <label>小項目名稱</label>
         <input type="text" class="sub-name" placeholder="例：整理第一章大綱">
@@ -1714,22 +1772,32 @@ function buildProjCard(p) {
         </div>
       </div>
       <div><button class="ghost mini sub-add">加入小項目</button></div>
+      </div>
     </div>`;
 
   card.querySelector(".name").textContent = p.name;
   card.querySelector(".proj-meta").textContent =
     `${p.start} ～ ${projEndDate(p)}｜目標 ${p.tDays} 天 ${p.tHours} 小時`;
 
-  card.querySelector(".proj-remove").addEventListener("click", () => {
-    p.subs.forEach(s => clearInterval(s.timerId));
-    projects.splice(projects.indexOf(p), 1);
-    renderProjects();
+  // 點標題列收合細項，只留名稱與進度條（狀態會記住）
+  const detail = card.querySelector(".proj-detail");
+  const caret = card.querySelector(".caret");
+  const applyCollapse = () => {
+    detail.hidden = !!p.collapsed;
+    caret.textContent = p.collapsed ? "▸" : "▾";
+  };
+  applyCollapse();
+  card.querySelector(".proj-head").addEventListener("click", () => {
+    p.collapsed = !p.collapsed;
+    applyCollapse();
     saveState();
   });
 
-  // 編輯專案：名稱、日期、目標、顏色（結案的專案把日期改到過去，就會被檢視區間收起來）
+  // 編輯專案（✎）：打開行內編輯列；移除專案收在編輯列裡面
   const editRow = card.querySelector(".proj-edit-row");
-  card.querySelector(".proj-edit").addEventListener("click", () => {
+  card.querySelector(".proj-edit").addEventListener("click", (e) => {
+    e.stopPropagation();   // 不要順便觸發收合
+    if (p.collapsed) { p.collapsed = false; applyCollapse(); }
     editRow.hidden = !editRow.hidden;
     if (!editRow.hidden) {
       editRow.querySelector(".pe-name").value = p.name;
@@ -1738,6 +1806,13 @@ function buildProjCard(p) {
       editRow.querySelector(".pe-hours").value = p.tHours;
       editRow.querySelector(".pe-color").value = p.color || DEFAULT_PROJ_COLOR;
     }
+  });
+  editRow.querySelector(".pe-remove").addEventListener("click", () => {
+    if (!confirm(`確定要移除專案「${p.name}」？投入紀錄會一併刪除。`)) return;
+    p.subs.forEach(s => clearInterval(s.timerId));
+    projects.splice(projects.indexOf(p), 1);
+    renderProjects();
+    saveState();
   });
   editRow.querySelector(".pe-cancel").addEventListener("click", () => { editRow.hidden = true; });
   editRow.querySelector(".pe-save").addEventListener("click", () => {
@@ -1785,6 +1860,7 @@ function buildSubRow(p, s) {
   s.el = row;
   row.innerHTML = `
     <div class="top">
+      <button class="icon-btn icon-primary" data-act="toggle" title="開始">▶</button>
       <span class="name" style="font-weight:600;font-size:.92rem"></span>
       <span class="sub-actions">
         <button class="icon-btn" data-act="edit" title="編輯">✎</button>
@@ -1792,21 +1868,17 @@ function buildSubRow(p, s) {
       </span>
     </div>
     <div class="bar"><div class="fill"></div></div>
-    <div class="btns">
-      <button class="icon-btn icon-primary" data-act="start" title="開始">▶</button>
-      <button class="icon-btn" data-act="pause" title="暫停">❚❚</button>
-      <span class="time"></span>
-      <span class="manual">已投入
-        <input type="number" class="man-h" min="0"> 時
-        <input type="number" class="man-m" min="0" max="59"> 分
-      </span>
-    </div>
+    <div class="time"></div>
     <div class="edit-row sub-edit-row" hidden>
       <div style="flex:2 1 130px"><label>名稱</label><input type="text" class="se-name"></div>
       <div><label>開始日期</label><input type="date" class="se-start"></div>
       <div><label>目標時間</label><div class="inline-num">
         <input type="number" class="se-h" min="0"> 時
         <input type="number" class="se-m" min="0" max="59"> 分
+      </div></div>
+      <div><label>已投入</label><div class="inline-num">
+        <input type="number" class="man-h" min="0"> 時
+        <input type="number" class="man-m" min="0" max="59"> 分
       </div></div>
       <div style="flex:0 0 auto">
         <button class="mini se-save">儲存</button>
@@ -1815,8 +1887,10 @@ function buildSubRow(p, s) {
     </div>`;
   row.querySelector(".name").textContent = `${s.name}（${s.start} 起）`;
 
-  row.querySelector('[data-act="start"]').addEventListener("click", () => startSub(p, s));
-  row.querySelector('[data-act="pause"]').addEventListener("click", () => pauseSub(p, s));
+  // 開始／暫停同一顆按鈕，依狀態切換圖示
+  row.querySelector('[data-act="toggle"]').addEventListener("click", () => {
+    s.running ? pauseSub(p, s) : startSub(p, s);
+  });
   row.querySelector('[data-act="remove"]').addEventListener("click", () => {
     clearInterval(s.timerId);
     p.subs.splice(p.subs.indexOf(s), 1);
@@ -1824,7 +1898,7 @@ function buildSubRow(p, s) {
     saveState();
   });
 
-  // 編輯小項目：名稱、日期、目標時間（動態調整用，取代原本的重設）
+  // 編輯小項目：名稱、日期、目標時間、已投入（動態調整都在這裡）
   const editRow = row.querySelector(".sub-edit-row");
   row.querySelector('[data-act="edit"]').addEventListener("click", () => {
     editRow.hidden = !editRow.hidden;
@@ -1833,6 +1907,8 @@ function buildSubRow(p, s) {
       editRow.querySelector(".se-start").value = s.start;
       editRow.querySelector(".se-h").value = s.tH;
       editRow.querySelector(".se-m").value = s.tM;
+      editRow.querySelector(".man-h").value = Math.floor(s.elapsedSec / 3600);
+      editRow.querySelector(".man-m").value = Math.floor(s.elapsedSec % 3600 / 60);
     }
   });
   editRow.querySelector(".se-cancel").addEventListener("click", () => { editRow.hidden = true; });
@@ -1844,36 +1920,24 @@ function buildSubRow(p, s) {
     if (!name || !start) { alert("名稱與開始日期不能空白"); return; }
     if (tH === 0 && tM === 0) { alert("目標時間至少 1 分鐘"); return; }
     Object.assign(s, { name, start, tH, tM });
-    // 目標改了就重新判斷完成狀態
+
+    // 已投入：手動調整的差額記到今天（調少就從今天扣，最低 0）
+    const mh = parseInt(editRow.querySelector(".man-h").value, 10) || 0;
+    const mm = parseInt(editRow.querySelector(".man-m").value, 10) || 0;
+    const prev = s.elapsedSec;
+    s.elapsedSec = Math.min(mh * 3600 + mm * 60, subTargetSec(s));
+    s.log = s.log || {};
+    const today = fmtDate(new Date());
+    s.log[today] = Math.max(0, (s.log[today] || 0) + (s.elapsedSec - prev));
+
     s.done = s.elapsedSec >= subTargetSec(s);
-    if (s.done) s.elapsedSec = subTargetSec(s);
     if (s.running) {
       if (s.done) { s.running = false; s.startedAt = null; clearInterval(s.timerId); }
       else { s.baseElapsed = s.elapsedSec; s.startedAt = Date.now(); }
     }
     renderProjects();
-    saveState();
+    renderRecords();   // 打卡紀錄的「投入」摘要跟著更新（renderRecords 內含存檔）
   });
-
-  // 手動填「已投入」：兩個欄位任一變動就更新 elapsedSec
-  const applyManual = () => {
-    const h = parseInt(row.querySelector(".man-h").value, 10) || 0;
-    const m = parseInt(row.querySelector(".man-m").value, 10) || 0;
-    const prev = s.elapsedSec;
-    s.elapsedSec = Math.min(h * 3600 + m * 60, subTargetSec(s));
-    // 手動調整的差額記到今天（調少就從今天扣，最低 0）
-    s.log = s.log || {};
-    const today = fmtDate(new Date());
-    s.log[today] = Math.max(0, (s.log[today] || 0) + (s.elapsedSec - prev));
-    if (s.running) { s.baseElapsed = s.elapsedSec; s.startedAt = Date.now(); }   // 計時中手動改，從新值繼續跑
-    if (s.elapsedSec >= subTargetSec(s)) { finishSub(p, s, false); }
-    else if (s.done) { s.done = false; row.classList.remove("done"); }
-    paintSub(p, s);
-    paintProj(p);
-    renderRecords();   // 打卡紀錄的「投入」摘要跟著更新
-  };
-  row.querySelector(".man-h").addEventListener("change", applyManual);
-  row.querySelector(".man-m").addEventListener("change", applyManual);
   return row;
 }
 
@@ -1930,7 +1994,7 @@ function finishSub(p, s, withSound) {
   saveState();
 }
 
-// 依狀態重繪小項目：時間、進度條（用專案顏色）、按鈕、已投入欄位
+// 依狀態重繪小項目：時間、進度條（用專案顏色）、開始／暫停按鈕圖示
 function paintSub(p, s) {
   const target = subTargetSec(s);
   const pct = target ? Math.min(100, s.elapsedSec / target * 100) : 0;
@@ -1941,15 +2005,10 @@ function paintSub(p, s) {
     ? `<span class="done-label">完成！共 ${fmtSec(target)}</span>`
     : `${fmtSec(s.elapsedSec)} / ${fmtSec(target)}`;
 
-  s.el.querySelector('[data-act="start"]').disabled = s.running || s.done;
-  s.el.querySelector('[data-act="pause"]').disabled = !s.running;
-
-  // 已投入欄位跟著目前值走，但使用者正在打字時不要蓋掉
-  const mh = s.el.querySelector(".man-h"), mm = s.el.querySelector(".man-m");
-  if (document.activeElement !== mh && document.activeElement !== mm) {
-    mh.value = Math.floor(s.elapsedSec / 3600);
-    mm.value = Math.floor(s.elapsedSec % 3600 / 60);
-  }
+  const toggle = s.el.querySelector('[data-act="toggle"]');
+  toggle.textContent = s.running ? "❚❚" : "▶";
+  toggle.title = s.running ? "暫停" : "開始";
+  toggle.disabled = s.done;
 }
 
 // 專案總進度 = 小項目投入合計 / 專案目標（專案沒設目標就用小項目目標合計）
@@ -1963,7 +2022,7 @@ function paintProj(p) {
   fill.style.background = allDone ? "var(--green)" : (p.color || DEFAULT_PROJ_COLOR);
   p.el.querySelector(".proj-progress").textContent =
     `已投入 ${fmtDur(spent)}／目標 ${fmtDur(target)}（${Math.round(pct)}%）`;
-  if (!allDone) p.el.classList.remove("done");
+  p.el.classList.toggle("done", !!allDone);
 }
 
 /* ---------- 打卡表單的「關聯專案／任務」下拉選單 ---------- */
@@ -2286,7 +2345,7 @@ $("importFile").addEventListener("change", () => {
       projects.length = 0;
       (data.projects || []).forEach(p => projects.push({
         id: ++projSeq, name: p.name, start: p.start, tDays: p.tDays, tHours: p.tHours,
-        color: p.color || DEFAULT_PROJ_COLOR,
+        color: p.color || DEFAULT_PROJ_COLOR, collapsed: !!p.collapsed,
         subs: (p.subs || []).map(s => ({
           id: ++subSeq, name: s.name, start: s.start, tH: s.tH, tM: s.tM,
           elapsedSec: s.elapsedSec, running: false, done: s.done, timerId: null,
@@ -2402,7 +2461,7 @@ document.addEventListener("visibilitychange", () => {
       saved.projects.forEach(p => {
         projects.push({
           id: ++projSeq, name: p.name, start: p.start, tDays: p.tDays, tHours: p.tHours,
-          color: p.color || DEFAULT_PROJ_COLOR,
+          color: p.color || DEFAULT_PROJ_COLOR, collapsed: !!p.collapsed,
           subs: (p.subs || []).map(s => ({
             id: ++subSeq, name: s.name, start: s.start, tH: s.tH, tM: s.tM,
             elapsedSec: s.elapsedSec, done: s.done, timerId: null, log: s.log || {},
@@ -2444,6 +2503,7 @@ document.addEventListener("visibilitychange", () => {
   applyPayVisible();
   $("projViewFrom").value = settings.projFrom || "";
   $("projViewTo").value = settings.projTo || "";
+  applySections();
 
   renderRecords();
   renderProjects();
