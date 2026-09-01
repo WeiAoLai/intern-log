@@ -44,6 +44,12 @@
   header { text-align: center; margin-bottom: 28px; }
   header h1 { font-size: 1.7rem; letter-spacing: .05em; }
   header p  { color: var(--ink-soft); font-size: .92rem; margin-top: 4px; }
+  /* 像素植物：跟著累計時數長大 */
+  #plantCanvas { display: block; margin: 0 auto 2px; image-rendering: pixelated; }
+  #plantLabel { font-size: .72rem; color: var(--ink-soft); margin-bottom: 6px; }
+
+  /* 頂部統計列比薪水卡多一格 */
+  .stats-top { grid-template-columns: repeat(5, 1fr); }
 
   /* ===== 卡片通用樣式 ===== */
   .card {
@@ -185,6 +191,20 @@
   button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 5px 10px; font-size: .8rem; }
   button.danger:hover:not(:disabled) { background: #f9ecea; }
   button.mini { padding: 5px 12px; font-size: .8rem; }
+  /* 圓形圖示按鈕：小項目的 ▶ ❚❚ ✎ ✕ */
+  .icon-btn {
+    width: 34px; height: 34px; padding: 0;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .78rem; line-height: 1;
+    background: transparent; color: var(--accent-deep);
+    border: 1px solid var(--line);
+  }
+  .icon-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .icon-btn.icon-primary { background: var(--accent); color: #fff; border: none; }
+  .icon-btn.icon-primary:hover:not(:disabled) { background: var(--accent-deep); }
+  .icon-btn.icon-danger { color: var(--danger); }
+  .sub-actions { display: inline-flex; gap: 6px; align-items: center; }
 
   /* ===== 打卡紀錄表格 ===== */
   .table-scroll { overflow-x: auto; }
@@ -292,6 +312,9 @@
   }
   .view-filter input[type="date"] { width: auto; }
 
+  /* 打卡紀錄裡的每日投入摘要 */
+  .effort-line { font-size: .78rem; color: var(--ink-soft); margin-top: 4px; white-space: normal; }
+
   /* 打卡紀錄裡的專案連結標籤 */
   .link-tag {
     display: inline-block; padding: 2px 8px; border-radius: 6px;
@@ -350,7 +373,8 @@
     header p { font-size: .8rem; }
     .card { padding: 16px 14px; border-radius: 14px; margin-bottom: 14px; }
 
-    .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stats, .stats-top { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stats-top .hero { grid-column: span 2; }   /* 今日投入手機上獨占一整排 */
     .stat { padding: 10px 8px; border-radius: 12px; }
     .stat .num { font-size: 1.25rem; }
     .stat.hero .num { font-size: 1.55rem; }
@@ -386,12 +410,15 @@
 <div class="wrap">
 
   <header>
+    <canvas id="plantCanvas" width="78" height="84"></canvas>
+    <div id="plantLabel"></div>
     <h1>實習紀錄助手</h1>
     <p>打卡、專案計時、內容紀錄，一頁完成（資料只存在這台裝置的瀏覽器裡，不會上傳到任何地方）</p>
   </header>
 
   <!-- ===== 統計列：由打卡紀錄自動計算 ===== -->
-  <div class="stats" style="margin-bottom:22px">
+  <div class="stats stats-top" style="margin-bottom:22px">
+    <div class="stat hero"><div class="num" id="statToday">0h</div><div class="lbl">今日投入</div></div>
     <div class="stat"><div class="num" id="statDays">0</div><div class="lbl">實習天數</div></div>
     <div class="stat"><div class="num" id="statHours">0</div><div class="lbl">累計時數</div></div>
     <div class="stat"><div class="num" id="statOnsite">0</div><div class="lbl">實體天數</div></div>
@@ -425,26 +452,10 @@
             <option value="date">月份日期</option>
           </select>
         </div>
-        <div>
-          <label for="setWage">預設時薪（元）</label>
-          <input type="number" id="setWage" min="0" step="1" placeholder="例：200">
-        </div>
-        <div>
-          <label for="setRateSel">預設勞退自提</label>
-          <select id="setRateSel">
-            <option value="0">不自提</option>
-            <option value="1">1%</option>
-            <option value="2">2%</option>
-            <option value="3">3%</option>
-            <option value="4">4%</option>
-            <option value="5">5%</option>
-            <option value="6" selected>6%（上限）</option>
-          </select>
-        </div>
       </div>
       <p style="font-size:.78rem;color:var(--ink-soft)">
-        所有設定都會記在這台裝置上。預設時間會自動帶入打卡表單；時薪與自提比例會帶入薪水卡，
-        跟薪水卡裡的欄位是同一個值，改哪邊都一樣。跨裝置要共用設定，用「備份與同步」搬過去。
+        所有設定都會記在這台裝置上。預設時間會自動帶入打卡表單；薪水卡的時薪與自提比例輸入過一次也會自動記住。
+        跨裝置要共用設定，用「備份與同步」搬過去。
       </p>
     </div>
   </section>
@@ -473,10 +484,11 @@
         <input type="time" id="inEnd" value="18:00">
       </div>
       <div>
-        <label for="inLink">關聯專案／任務（選填）</label>
-        <select id="inLink"><option value="">無</option></select>
+        <label for="inLink">關聯專案／任務（可加多個）</label>
+        <select id="inLink"><option value="">＋ 選擇加入</option></select>
       </div>
     </div>
+    <div id="linkChips" class="att-thumbs" style="margin:-4px 0 12px"></div>
     <div style="margin-bottom:12px">
       <label for="inNote">今天做了什麼（實習內容，可直接貼上圖片，文字與圖片會照順序保留）</label>
       <div class="editor" id="inNote" contenteditable="true"
@@ -675,6 +687,7 @@
     <h2>統整成分享文章</h2>
     <div class="row-btns">
       <button id="btnGen">產生文章</button>
+      <button id="btnWeekly" class="ghost">產生週報（近 7 天）</button>
       <button id="btnCopy" class="ghost" disabled>複製全文</button>
     </div>
     <textarea id="articleOut" placeholder="按「產生文章」，會把打卡紀錄、實習內容、專案時間統整成一篇 Markdown 文章，可直接貼到 Notion、部落格或群組分享。"></textarea>
@@ -747,7 +760,8 @@ function currentState() {
     id: p.id, name: p.name, start: p.start, tDays: p.tDays, tHours: p.tHours, color: p.color,
     subs: p.subs.map(s => ({
       id: s.id, name: s.name, start: s.start, tH: s.tH, tM: s.tM,
-      elapsedSec: s.elapsedSec, done: s.done,
+      elapsedSec: s.elapsedSec, done: s.done, log: s.log || {},
+      running: s.running, startedAt: s.startedAt || null, baseElapsed: s.baseElapsed || 0,
     })),
   }));
   return { records, projects: projectsLite, settings };
@@ -1096,22 +1110,8 @@ function enterEditMode(r) {
   blocksToEditor(r.content, $("inNote"));
   pendingFiles = (r.files || []).slice();
   renderAttPreview();
-  // 帶入原本的專案連結：清單裡找得到就選它，找不到就掛一個「原紀錄」選項保留
-  refreshLinkSelect();
-  const sel = $("inLink");
-  sel.value = "";
-  if (r.link) {
-    const match = projects.findIndex(p => p.name === r.link.p);
-    const want = r.link.s === null
-      ? `p:${match}`
-      : `s:${match}:${match >= 0 ? projects[match].subs.findIndex(s => s.name === r.link.s) : -1}`;
-    if ([...sel.options].some(o => o.value === want)) {
-      sel.value = want;
-    } else {
-      const opt = new Option(`${r.link.p}${r.link.s ? "｜" + r.link.s : ""}（原紀錄）`, "cur", true, true);
-      sel.appendChild(opt);
-    }
-  }
+  pendingLinks = (r.links || []).slice();   // 帶入原本的關聯標籤，可移除或再加
+  renderLinkChips();
   $("btnCheckIn").textContent = "更新紀錄";
   $("btnCancelEdit").style.display = "inline-block";
   updateHoursPreview();
@@ -1123,6 +1123,8 @@ function exitEditMode() {
   $("inNote").innerHTML = "";
   pendingFiles = [];
   renderAttPreview();
+  pendingLinks = [];
+  renderLinkChips();
   $("btnCheckIn").textContent = "打卡";
   $("btnCancelEdit").style.display = "none";
 }
@@ -1141,7 +1143,7 @@ $("btnCheckIn").addEventListener("click", () => {
     start: $("inStart").value,
     end:   $("inEnd").value,
     hours,
-    link: linkFromSelect(),
+    links: pendingLinks.slice(),
     content: editorToBlocks($("inNote")),
     files: pendingFiles.slice(),
   };
@@ -1153,7 +1155,9 @@ $("btnCheckIn").addEventListener("click", () => {
     records.push(data);
     $("inNote").innerHTML = "";
     pendingFiles = [];
+    pendingLinks = [];
     renderAttPreview();
+    renderLinkChips();
   }
   records.sort((a, b) => a.date.localeCompare(b.date));
   renderRecords();
@@ -1180,14 +1184,23 @@ function renderRecords() {
       <td class="note-cell"></td>
       <td></td>`;
     const noteCell = tr.querySelector(".note-cell");
-    if (r.link) {
-      const tag = document.createElement("span");
-      tag.className = "link-tag";
-      tag.textContent = r.link.s ? `${r.link.p}｜${r.link.s}` : r.link.p;
-      noteCell.appendChild(tag);
+    if (r.links && r.links.length) {
+      r.links.forEach(l => {
+        const tag = document.createElement("span");
+        tag.className = "link-tag";
+        tag.textContent = l.s ? `${l.p}｜${l.s}` : l.p;
+        noteCell.appendChild(tag);
+      });
       noteCell.appendChild(document.createElement("br"));
     }
     blocksToCell(r.content, noteCell);
+    const effort = effortText(r.date);   // 當天各專案的計時投入
+    if (effort) {
+      const line = document.createElement("div");
+      line.className = "effort-line";
+      line.textContent = "投入：" + effort;
+      noteCell.appendChild(line);
+    }
     if (r.files && r.files.length) {
       const box = document.createElement("div");
       box.className = "att-thumbs";
@@ -1218,15 +1231,101 @@ function renderRecords() {
   saveState();
 }
 
-// 統計列：實習天數以「不重複日期」計
+// 統計列：實習天數以「不重複日期」計；今日投入來自小項目的計時紀錄
 function updateStats() {
   const days = new Set(records.map(r => r.date));
   $("statDays").textContent   = days.size;
   $("statHours").textContent  = Math.round(records.reduce((s, r) => s + r.hours, 0) * 10) / 10;
   $("statOnsite").textContent = new Set(records.filter(r => r.mode === "實體").map(r => r.date)).size;
   $("statRemote").textContent = new Set(records.filter(r => r.mode === "遠端").map(r => r.date)).size;
+  const today = fmtDate(new Date());
+  let todaySec = 0;
+  projects.forEach(p => p.subs.forEach(s => { todaySec += (s.log || {})[today] || 0; }));
+  $("statToday").textContent = todaySec < 3600
+    ? Math.round(todaySec / 60) + "m"
+    : (Math.round(todaySec / 360) / 10) + "h";
+  renderPlant();
   updatePay();
 }
+
+/* =========================================================
+ * 像素植物：跟著累計打卡時數長大（純顯示，不產生新資料）
+ * 圖是 13×14 的像素格，兩幀輪播做出輕微搖擺
+ * ========================================================= */
+const PLANT_COLORS = {
+  P: "#c96a5b", p: "#a8523f", S: "#7a5c44",
+  g: "#6fae7c", G: "#4f8f5f", f: "#e8875b", F: "#ffd27f",
+};
+const PLANT_POT = [
+  "..SSSSSSSSS..",
+  "..PPPPPPPPP..",
+  "...PPPPPPP...",
+  "...ppppppp...",
+];
+// 六個階段的植株（由下往上長），門檻見 PLANT_LEVELS
+const PLANT_ART = [
+  [ // Lv.0 種子
+    ".............", ".............", ".............", ".............", ".............",
+    ".............", ".............", ".............", ".............", "......g......",
+  ],
+  [ // Lv.1 發芽
+    ".............", ".............", ".............", ".............", ".............",
+    ".............", ".............", ".....g.g.....", "......G......", "......G......",
+  ],
+  [ // Lv.2 幼苗
+    ".............", ".............", ".............", ".............", ".............",
+    "......g......", ".....gGg.....", "......G......", "....ggG......", "......G......",
+  ],
+  [ // Lv.3 小樹
+    ".............", ".............", ".............", "......g......", ".....gGg.....",
+    "......G......", "....ggG.gg...", "......G......", "....ggG......", "......G......",
+  ],
+  [ // Lv.4 含苞
+    ".............", ".............", "......f......", ".....gGg.....", "......G......",
+    "....ggG.gg...", "......G......", "..gg..G......", "......G......", "......G......",
+  ],
+  [ // Lv.5 開花
+    "......f......", ".....fFf.....", "......f......", ".....gGg.....", "......G......",
+    "....ggG.gg...", "......G......", "..gg..G..gg..", "......G......", "......G......",
+  ],
+];
+const PLANT_LEVELS = [0, 4, 12, 24, 40, 60];   // 累計時數門檻
+let plantFrame = 0;
+
+function renderPlant() {
+  const canvas = $("plantCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const hours = records.reduce((s, r) => s + r.hours, 0);
+  let stage = 0;
+  PLANT_LEVELS.forEach((t, i) => { if (hours >= t) stage = i; });
+
+  const rows = PLANT_ART[stage].concat(PLANT_POT);
+  const drawRows = rows.slice();
+  if (plantFrame === 1) {
+    // 搖擺幀：最上面有植株像素的那一行右移一格
+    const top = drawRows.findIndex(r => /[gGfF]/.test(r));
+    if (top >= 0) drawRows[top] = "." + drawRows[top].slice(0, -1);
+  }
+
+  const cell = canvas.width / 13;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawRows.forEach((row, y) => {
+    [...row].forEach((ch, x) => {
+      if (PLANT_COLORS[ch]) {
+        ctx.fillStyle = PLANT_COLORS[ch];
+        ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    });
+  });
+
+  const next = PLANT_LEVELS[stage + 1];
+  $("plantLabel").textContent = next
+    ? `Lv.${stage}｜累計 ${Math.round(hours * 10) / 10} 小時，再 ${Math.max(0, Math.round((next - hours) * 10) / 10)} 小時升級`
+    : `Lv.${stage}｜開花了！累計 ${Math.round(hours * 10) / 10} 小時`;
+}
+
+setInterval(() => { plantFrame = 1 - plantFrame; renderPlant(); }, 900);
 
 /* =========================================================
  * 設定：預設上下班時間、主題色調
@@ -1263,19 +1362,6 @@ $("setTheme").addEventListener("change", () => {
 $("setPayMode").addEventListener("change", () => {
   settings.payRangeMode = $("setPayMode").value;
   applyPayMode();
-  updatePay();
-  saveState();
-});
-// 預設時薪／自提比例：跟薪水卡是同一個值，兩邊互相同步
-$("setWage").addEventListener("input", () => {
-  settings.hourlyWage = parseFloat($("setWage").value) || 0;
-  $("payHourly").value = $("setWage").value;
-  updatePay();
-  saveState();
-});
-$("setRateSel").addEventListener("change", () => {
-  settings.payRate = parseInt($("setRateSel").value, 10);
-  $("payRate").value = $("setRateSel").value;
   updatePay();
   saveState();
 });
@@ -1322,13 +1408,11 @@ $("btnPayToggle").addEventListener("click", () => {
 });
 $("payHourly").addEventListener("input", () => {
   settings.hourlyWage = parseFloat($("payHourly").value) || 0;
-  $("setWage").value = $("payHourly").value;
   updatePay();
   saveState();
 });
 $("payRate").addEventListener("change", () => {
   settings.payRate = parseInt($("payRate").value, 10);
-  $("setRateSel").value = $("payRate").value;
   updatePay();
   saveState();
 });
@@ -1432,8 +1516,11 @@ function buildExportMd(sel, dayOf) {
     "|---|---|---|---|---|---|---|",
   ];
   sel.forEach(r => {
-    const linkTxt = r.link ? `【${r.link.p}${r.link.s ? "｜" + r.link.s : ""}】` : "";
-    const note = linkTxt + (blocksText(r.content) || "—").replace(/\n/g, " ").replace(/\|/g, "／");
+    const linkTxt = (r.links && r.links.length)
+      ? `【${r.links.map(l => l.s ? `${l.p}｜${l.s}` : l.p).join("；")}】` : "";
+    const effort = effortText(r.date);
+    const note = linkTxt + (blocksText(r.content) || "—").replace(/\n/g, " ").replace(/\|/g, "／")
+      + (effort ? `（投入：${effort}）` : "");
     const att  = (r.files || []).map(f => f.name).join("、") || "—";
     lines.push(`| Day ${dayOf[r.date]} | ${r.date} | ${r.mode} | ${r.start}–${r.end} | ${r.hours} 小時 | ${note} | ${att} |`);
   });
@@ -1452,8 +1539,13 @@ function buildExportHtml(sel, dayOf) {
         ? `<figure><img src="${f.dataUrl}" alt="${esc(f.name)}"><figcaption>附件：${esc(f.name)}</figcaption></figure>`
         : `<p class="att">附件：<a href="${f.dataUrl}" download="${esc(f.name)}">${esc(f.name)}</a></p>`)
       .join("\n");
-    const linkLine = r.link
-      ? `<p class="meta">關聯：${esc(r.link.p)}${r.link.s ? "｜" + esc(r.link.s) : ""}</p>` : "";
+    const linkParts = [];
+    if (r.links && r.links.length) {
+      linkParts.push("關聯：" + r.links.map(l => esc(l.s ? `${l.p}｜${l.s}` : l.p)).join("；"));
+    }
+    const effort = effortText(r.date);
+    if (effort) linkParts.push("投入：" + esc(effort));
+    const linkLine = linkParts.length ? `<p class="meta">${linkParts.join("　")}</p>` : "";
     return `<section>
       <h2>Day ${dayOf[r.date]} <small>${r.date}｜${r.mode}｜${r.start}–${r.end}｜${r.hours} 小時</small></h2>
       ${linkLine}
@@ -1604,7 +1696,8 @@ function buildProjCard(p) {
       </div>
     </div>
     <div class="subs"></div>
-    <div class="add-sub">
+    <button class="ghost mini sub-form-toggle" style="margin-top:2px">＋ 小項目</button>
+    <div class="add-sub" hidden>
       <div style="flex:2 1 160px">
         <label>小項目名稱</label>
         <input type="text" class="sub-name" placeholder="例：整理第一章大綱">
@@ -1659,6 +1752,13 @@ function buildProjCard(p) {
     saveState();
   });
 
+  // 新增小項目的表單預設收合，點「＋ 小項目」展開
+  const addSubForm = card.querySelector(".add-sub");
+  card.querySelector(".sub-form-toggle").addEventListener("click", () => {
+    addSubForm.hidden = !addSubForm.hidden;
+    if (!addSubForm.hidden) card.querySelector(".sub-name").focus();
+  });
+
   card.querySelector(".sub-add").addEventListener("click", () => {
     const name = card.querySelector(".sub-name").value.trim();
     const tH = parseInt(card.querySelector(".sub-h").value, 10) || 0;
@@ -1668,7 +1768,7 @@ function buildProjCard(p) {
     if (tH === 0 && tM === 0) { alert("目標時間至少 1 分鐘"); return; }
     p.subs.push({
       id: ++subSeq, name, start, tH, tM,
-      elapsedSec: 0, running: false, done: false, timerId: null,
+      elapsedSec: 0, running: false, done: false, timerId: null, log: {},
     });
     renderProjects();
     saveState();
@@ -1686,14 +1786,16 @@ function buildSubRow(p, s) {
   row.innerHTML = `
     <div class="top">
       <span class="name" style="font-weight:600;font-size:.92rem"></span>
-      <span class="time"></span>
+      <span class="sub-actions">
+        <button class="icon-btn" data-act="edit" title="編輯">✎</button>
+        <button class="icon-btn icon-danger" data-act="remove" title="移除">✕</button>
+      </span>
     </div>
     <div class="bar"><div class="fill"></div></div>
     <div class="btns">
-      <button data-act="start">開始</button>
-      <button data-act="pause" class="ghost">暫停</button>
-      <button data-act="edit" class="ghost">編輯</button>
-      <button data-act="remove" class="danger">移除</button>
+      <button class="icon-btn icon-primary" data-act="start" title="開始">▶</button>
+      <button class="icon-btn" data-act="pause" title="暫停">❚❚</button>
+      <span class="time"></span>
       <span class="manual">已投入
         <input type="number" class="man-h" min="0"> 時
         <input type="number" class="man-m" min="0" max="59"> 分
@@ -1745,6 +1847,10 @@ function buildSubRow(p, s) {
     // 目標改了就重新判斷完成狀態
     s.done = s.elapsedSec >= subTargetSec(s);
     if (s.done) s.elapsedSec = subTargetSec(s);
+    if (s.running) {
+      if (s.done) { s.running = false; s.startedAt = null; clearInterval(s.timerId); }
+      else { s.baseElapsed = s.elapsedSec; s.startedAt = Date.now(); }
+    }
     renderProjects();
     saveState();
   });
@@ -1753,37 +1859,60 @@ function buildSubRow(p, s) {
   const applyManual = () => {
     const h = parseInt(row.querySelector(".man-h").value, 10) || 0;
     const m = parseInt(row.querySelector(".man-m").value, 10) || 0;
-    s.elapsedSec = h * 3600 + m * 60;
-    if (s.elapsedSec >= subTargetSec(s)) { s.elapsedSec = subTargetSec(s); finishSub(p, s, false); }
+    const prev = s.elapsedSec;
+    s.elapsedSec = Math.min(h * 3600 + m * 60, subTargetSec(s));
+    // 手動調整的差額記到今天（調少就從今天扣，最低 0）
+    s.log = s.log || {};
+    const today = fmtDate(new Date());
+    s.log[today] = Math.max(0, (s.log[today] || 0) + (s.elapsedSec - prev));
+    if (s.running) { s.baseElapsed = s.elapsedSec; s.startedAt = Date.now(); }   // 計時中手動改，從新值繼續跑
+    if (s.elapsedSec >= subTargetSec(s)) { finishSub(p, s, false); }
     else if (s.done) { s.done = false; row.classList.remove("done"); }
     paintSub(p, s);
     paintProj(p);
-    saveState();
+    renderRecords();   // 打卡紀錄的「投入」摘要跟著更新
   };
   row.querySelector(".man-h").addEventListener("change", applyManual);
   row.querySelector(".man-m").addEventListener("change", applyManual);
   return row;
 }
 
+/* 計時用「真實時間」計算：記下開始的時間點，每次更新都重算經過秒數。
+ * 好處是切到別的 App、鎖螢幕、甚至關掉再開，時間照樣正確累積，不會漏。
+ * （鎖定畫面的浮動計時器是原生 App 的 Live Activity 能力，網頁做不到。） */
 function startSub(p, s) {
   if (s.running || s.done) return;
   s.running = true;
-  s.timerId = setInterval(() => {
-    s.elapsedSec++;
-    if (s.elapsedSec >= subTargetSec(s)) {
-      s.elapsedSec = subTargetSec(s);
-      finishSub(p, s, true);
-    }
-    paintSub(p, s);
-    paintProj(p);
-    if (s.elapsedSec % 30 === 0) saveState();   // 執行中每 30 秒落地，防意外關頁
-  }, 1000);
+  s.startedAt = Date.now();
+  s.baseElapsed = s.elapsedSec;
+  s.timerId = setInterval(() => tickSub(p, s), 1000);
   paintSub(p, s);
+  saveState();   // 把「計時中」也存起來，關掉 App 再開會自動接續
+}
+
+function tickSub(p, s) {
+  const target = subTargetSec(s);
+  const now = Math.min(target, s.baseElapsed + Math.floor((Date.now() - s.startedAt) / 1000));
+  const delta = now - s.elapsedSec;
+  if (delta > 0) {
+    s.elapsedSec = now;
+    // 差額記到今天的投入，打卡紀錄才能顯示「哪天花多久在哪個專案」
+    s.log = s.log || {};
+    const today = fmtDate(new Date());
+    s.log[today] = (s.log[today] || 0) + delta;
+  }
+  if (s.elapsedSec >= target) finishSub(p, s, true);
+  paintSub(p, s);
+  paintProj(p);
+  updateStats();   // 今日投入與像素植物跟著跳
+  if (s.elapsedSec % 30 === 0) saveState();   // 執行中每 30 秒落地，防意外關頁
 }
 
 function pauseSub(p, s) {
   if (!s.running) return;
+  tickSub(p, s);   // 先補到最新
   s.running = false;
+  s.startedAt = null;
   clearInterval(s.timerId);
   paintSub(p, s);
   saveState();
@@ -1791,6 +1920,7 @@ function pauseSub(p, s) {
 
 function finishSub(p, s, withSound) {
   s.running = false;
+  s.startedAt = null;
   s.done = true;
   clearInterval(s.timerId);
   s.el.classList.add("done");
@@ -1851,17 +1981,57 @@ function refreshLinkSelect() {
   if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
 
-// 下拉選項值 → 名稱快照（存名稱，之後改專案名不影響舊紀錄）
-function linkFromSelect() {
+// 已選的關聯（可多個）：存名稱快照，之後改專案名不影響舊紀錄
+let pendingLinks = [];
+
+function renderLinkChips() {
+  const box = $("linkChips");
+  box.innerHTML = "";
+  pendingLinks.forEach((l, i) => {
+    const chip = document.createElement("span");
+    chip.className = "link-tag";
+    chip.textContent = l.s ? `${l.p}｜${l.s}` : l.p;
+    const x = document.createElement("button");
+    x.className = "chip-remove";
+    x.textContent = "×";
+    x.title = "移除關聯";
+    x.addEventListener("click", () => { pendingLinks.splice(i, 1); renderLinkChips(); });
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+
+// 下拉選一個就加成標籤，可重複操作加多個；重複選同一個會忽略
+$("inLink").addEventListener("change", () => {
   const v = $("inLink").value;
-  if (!v) return null;
-  if (v === "cur") return editingRecord ? editingRecord.link : null;   // 編輯時保留原連結
+  $("inLink").value = "";
+  if (!v) return;
   const parts = v.split(":");
   const p = projects[+parts[1]];
-  if (!p) return null;
-  return parts[0] === "p"
+  if (!p) return;
+  const link = parts[0] === "p"
     ? { p: p.name, s: null }
     : { p: p.name, s: p.subs[+parts[2]] ? p.subs[+parts[2]].name : null };
+  if (!pendingLinks.some(l => l.p === link.p && l.s === link.s)) pendingLinks.push(link);
+  renderLinkChips();
+});
+
+/* ---------- 每日投入：把小項目的計時記到日期上 ---------- */
+// 回傳某天各專案的投入秒數 [[專案名, 秒數], ...]
+function dayEffort(date) {
+  const byProj = {};
+  projects.forEach(p => p.subs.forEach(s => {
+    const sec = (s.log || {})[date];
+    if (sec) byProj[p.name] = (byProj[p.name] || 0) + sec;
+  }));
+  return Object.entries(byProj);
+}
+
+function effortText(date) {
+  const entries = dayEffort(date);
+  return entries.length
+    ? entries.map(([name, sec]) => `${name} ${fmtDur(sec)}`).join("、")
+    : "";
 }
 
 /* =========================================================
@@ -1980,8 +2150,11 @@ $("btnGen").addEventListener("click", () => {
     lines.push("|---|---|---|---|---|");
     records.forEach(r => {
       const attNames = (r.files || []).map(f => f.name).join("、");
-      const linkTxt = r.link ? `【${r.link.p}${r.link.s ? "｜" + r.link.s : ""}】` : "";
+      const linkTxt = (r.links && r.links.length)
+        ? `【${r.links.map(l => l.s ? `${l.p}｜${l.s}` : l.p).join("；")}】` : "";
+      const effort = effortText(r.date);
       const note = linkTxt + (blocksText(r.content) || "—").replace(/\n/g, " ").replace(/\|/g, "／")
+        + (effort ? `（投入：${effort}）` : "")
         + (attNames ? `（附件：${attNames}）` : "");
       lines.push(`| Day ${dayOf[r.date]} | ${r.date} | ${r.mode} | ${r.hours} 小時 | ${note} |`);
     });
@@ -2009,6 +2182,53 @@ $("btnGen").addEventListener("click", () => {
   lines.push("## 學習心得");
   lines.push("");
   lines.push("（這一段留給你手寫：這段期間學到什麼、卡在哪、下一步。）");
+
+  $("articleOut").value = lines.join("\n");
+  $("btnCopy").disabled = false;
+});
+
+// 週報：近 7 天的打卡、各專案投入合計，貼 Notion／LINE／給主管都行
+$("btnWeekly").addEventListener("click", () => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 6);
+  const from = fmtDate(start), to = fmtDate(end);
+  const sel = records.filter(r => r.date >= from && r.date <= to);
+  const dayOf = buildDayMap();
+
+  const lines = [`# 本週實習回顧（${from} ～ ${to}）`, ""];
+  const totalH = Math.round(sel.reduce((s, r) => s + r.hours, 0) * 10) / 10;
+  lines.push(`- 本週打卡：${new Set(sel.map(r => r.date)).size} 天、${totalH} 小時（已扣午休）`);
+  lines.push("");
+
+  lines.push("## 各專案投入");
+  lines.push("");
+  const byProj = {};
+  projects.forEach(p => p.subs.forEach(s => {
+    Object.entries(s.log || {}).forEach(([d, sec]) => {
+      if (d >= from && d <= to) byProj[p.name] = (byProj[p.name] || 0) + sec;
+    });
+  }));
+  const projLines = Object.entries(byProj).map(([name, sec]) => `- ${name}：${fmtDur(sec)}`);
+  lines.push(...(projLines.length ? projLines : ["（本週沒有計時紀錄）"]));
+  lines.push("");
+
+  lines.push("## 每日紀錄");
+  lines.push("");
+  if (sel.length) {
+    lines.push("| Day | 日期 | 形式 | 時數 | 內容 |");
+    lines.push("|---|---|---|---|---|");
+    sel.forEach(r => {
+      const note = (blocksText(r.content) || "—").replace(/\n/g, " ").replace(/\|/g, "／");
+      lines.push(`| Day ${dayOf[r.date]} | ${r.date} | ${r.mode} | ${r.hours} 小時 | ${note} |`);
+    });
+  } else {
+    lines.push("（本週沒有打卡）");
+  }
+  lines.push("");
+  lines.push("## 本週學到的 / 下週計畫");
+  lines.push("");
+  lines.push("（這一段留給你手寫。）");
 
   $("articleOut").value = lines.join("\n");
   $("btnCopy").disabled = false;
@@ -2050,10 +2270,12 @@ $("importFile").addEventListener("change", () => {
       alert("備份檔格式不對，找不到打卡或專案資料");
       return;
     }
-    // 舊版備份相容：note 字串 → content blocks
+    // 舊版備份相容：note 字串 → content blocks；單一 link → links 陣列
     (data.records || []).forEach(r => {
       if (!r.content) r.content = r.note ? [{ t: "x", text: r.note }] : [];
       delete r.note;
+      if (r.link && !r.links) r.links = [r.link];
+      delete r.link;
     });
 
     if ($("importMode").value === "replace") {
@@ -2068,6 +2290,7 @@ $("importFile").addEventListener("change", () => {
         subs: (p.subs || []).map(s => ({
           id: ++subSeq, name: s.name, start: s.start, tH: s.tH, tM: s.tM,
           elapsedSec: s.elapsedSec, running: false, done: s.done, timerId: null,
+          log: s.log || {},
         })),
       }));
       Object.assign(settings, data.settings || {});
@@ -2117,10 +2340,16 @@ function mergeImportedData(data) {
           local.subs.push({
             id: ++subSeq, name: is.name, start: is.start, tH: is.tH, tM: is.tM,
             elapsedSec: is.elapsedSec, running: false, done: is.done, timerId: null,
+            log: is.log || {},
           });
         } else {
           ls.elapsedSec = Math.max(ls.elapsedSec, is.elapsedSec);
           ls.done = ls.done || is.done;
+          // 每日投入取兩邊較大值，跟投入時間的合併邏輯一致
+          ls.log = ls.log || {};
+          Object.entries(is.log || {}).forEach(([d, sec]) => {
+            ls.log[d] = Math.max(ls.log[d] || 0, sec);
+          });
         }
       });
     }
@@ -2146,18 +2375,25 @@ $("btnWipe").addEventListener("click", async () => {
   location.reload();
 });
 
-// 切到背景（含關閉分頁前）再存一次，補齊計時中的進度
+// 切到背景（含關閉分頁前）先補齊再存；切回來立刻把背景期間經過的時間補上
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") saveState();
+  if (document.visibilityState === "hidden") {
+    projects.forEach(p => p.subs.forEach(s => { if (s.running) tickSub(p, s); }));
+    saveState();
+  } else {
+    projects.forEach(p => p.subs.forEach(s => { if (s.running) tickSub(p, s); }));
+  }
 });
 
 (async function init() {
   const saved = await loadState();
   if (saved) {
-    // 舊版資料相容：note 字串 → content blocks
+    // 舊版資料相容：note 字串 → content blocks；單一 link → links 陣列
     (saved.records || []).forEach(r => {
       if (!r.content) r.content = r.note ? [{ t: "x", text: r.note }] : [];
       delete r.note;
+      if (r.link && !r.links) r.links = [r.link];
+      delete r.link;
       records.push(r);
     });
     Object.assign(settings, saved.settings || {});
@@ -2169,7 +2405,10 @@ document.addEventListener("visibilitychange", () => {
           color: p.color || DEFAULT_PROJ_COLOR,
           subs: (p.subs || []).map(s => ({
             id: ++subSeq, name: s.name, start: s.start, tH: s.tH, tM: s.tM,
-            elapsedSec: s.elapsedSec, running: false, done: s.done, timerId: null,
+            elapsedSec: s.elapsedSec, done: s.done, timerId: null, log: s.log || {},
+            // 上次關閉時還在計時的，帶回計時狀態，稍後自動接續
+            running: !!(s.running && s.startedAt), startedAt: s.startedAt || null,
+            baseElapsed: s.baseElapsed || 0,
           })),
         });
       });
@@ -2183,7 +2422,7 @@ document.addEventListener("visibilitychange", () => {
           subs: [{
             id: ++subSeq, name: t.name, start: today,
             tH: Math.floor(t.targetSec / 3600), tM: Math.round(t.targetSec % 3600 / 60),
-            elapsedSec: t.elapsedSec, running: false, done: t.done, timerId: null,
+            elapsedSec: t.elapsedSec, running: false, done: t.done, timerId: null, log: {},
           }],
         });
       });
@@ -2200,8 +2439,6 @@ document.addEventListener("visibilitychange", () => {
   updateHoursPreview();
   $("payHourly").value = settings.hourlyWage || "";
   $("payRate").value = String(settings.payRate);
-  $("setWage").value = settings.hourlyWage || "";
-  $("setRateSel").value = String(settings.payRate);
   $("setPayMode").value = settings.payRangeMode;
   applyPayMode();
   applyPayVisible();
@@ -2210,6 +2447,14 @@ document.addEventListener("visibilitychange", () => {
 
   renderRecords();
   renderProjects();
+
+  // 上次關閉時還在計時的小項目：補上這段期間經過的時間並繼續跑
+  projects.forEach(p => p.subs.forEach(s => {
+    if (s.running && s.startedAt) {
+      s.timerId = setInterval(() => tickSub(p, s), 1000);
+      tickSub(p, s);
+    }
+  }));
 })();
 </script>
 </body>
