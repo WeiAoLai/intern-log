@@ -244,6 +244,29 @@
   }
   .chip-remove { background: none; border: none; color: var(--danger); padding: 0 0 0 2px; font-size: .85rem; }
 
+  /* 植物圖鑑彈窗 */
+  .plant-modal {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(40, 30, 20, .55);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .plant-modal[hidden] { display: none; }
+  .plant-modal .box {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 20px;
+    max-width: 420px; width: 100%;
+    max-height: 85vh; overflow-y: auto;
+    box-shadow: var(--shadow);
+  }
+  .plant-stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .plant-stage { text-align: center; padding: 10px 4px 6px; border-radius: 12px; border: 1px solid var(--line); }
+  .plant-stage.current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, #fff); }
+  .plant-stage.locked { opacity: .5; }
+  .plant-stage canvas { image-rendering: pixelated; }
+  .plant-stage .lbl { font-size: .7rem; color: var(--ink-soft); margin-top: 4px; }
+
   /* 圖片點開放大的燈箱 */
   .lightbox {
     position: fixed; inset: 0; z-index: 50;
@@ -296,6 +319,7 @@
   .proj-head .name { flex: 1; min-width: 0; }
   .proj-head .caret { color: var(--ink-soft); font-size: .8rem; width: 14px; display: inline-block; }
   .add-sub { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; border-top: 1px solid var(--line); padding-top: 12px; }
+  .add-sub[hidden] { display: none; }   /* display:flex 會蓋過 hidden 屬性，要明確關掉 */
   .add-sub > div { flex: 1 1 120px; }
   .add-sub .inline-num input { width: 60px; }
 
@@ -1317,34 +1341,42 @@ const PLANT_ART = [
   ],
 ];
 const PLANT_LEVELS = [0, 4, 12, 24, 40, 60];   // 累計時數門檻
+const PLANT_NAMES  = ["種子", "發芽", "幼苗", "小樹", "含苞", "開花"];
 let plantFrame = 0;
+
+function plantHours() { return records.reduce((s, r) => s + r.hours, 0); }
+function plantStage(hours) {
+  let stage = 0;
+  PLANT_LEVELS.forEach((t, i) => { if (hours >= t) stage = i; });
+  return stage;
+}
+
+// 把像素列畫到 canvas；mono 給一個顏色就整株畫成剪影（圖鑑裡未解鎖的階段用）
+function drawPixelRows(ctx, rows, cell, mono) {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  rows.forEach((row, y) => {
+    [...row].forEach((ch, x) => {
+      if (PLANT_COLORS[ch]) {
+        ctx.fillStyle = mono || PLANT_COLORS[ch];
+        ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    });
+  });
+}
 
 function renderPlant() {
   const canvas = $("plantCanvas");
   if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const hours = records.reduce((s, r) => s + r.hours, 0);
-  let stage = 0;
-  PLANT_LEVELS.forEach((t, i) => { if (hours >= t) stage = i; });
+  const hours = plantHours();
+  const stage = plantStage(hours);
 
-  const rows = PLANT_ART[stage].concat(PLANT_POT);
-  const drawRows = rows.slice();
+  const drawRows = PLANT_ART[stage].concat(PLANT_POT).slice();
   if (plantFrame === 1) {
     // 搖擺幀：最上面有植株像素的那一行右移一格
     const top = drawRows.findIndex(r => /[gGfF]/.test(r));
     if (top >= 0) drawRows[top] = "." + drawRows[top].slice(0, -1);
   }
-
-  const cell = canvas.width / 13;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawRows.forEach((row, y) => {
-    [...row].forEach((ch, x) => {
-      if (PLANT_COLORS[ch]) {
-        ctx.fillStyle = PLANT_COLORS[ch];
-        ctx.fillRect(x * cell, y * cell, cell, cell);
-      }
-    });
-  });
+  drawPixelRows(canvas.getContext("2d"), drawRows, canvas.width / 13);
 
   const next = PLANT_LEVELS[stage + 1];
   $("plantLabel").textContent = next
@@ -1353,6 +1385,50 @@ function renderPlant() {
 }
 
 setInterval(() => { plantFrame = 1 - plantFrame; renderPlant(); }, 900);
+
+/* ---------- 植物圖鑑：點植物看歷代型態與升級門檻 ---------- */
+const plantModal = document.createElement("div");
+plantModal.className = "plant-modal";
+plantModal.hidden = true;
+plantModal.innerHTML = `
+  <div class="box">
+    <h2 style="font-size:1.05rem;margin-bottom:6px">植物圖鑑</h2>
+    <p class="plant-now" style="font-size:.85rem;color:var(--ink-soft)"></p>
+    <div class="plant-stages"></div>
+    <p style="font-size:.72rem;color:var(--ink-soft);margin-top:10px">
+      植物跟著累計打卡時數長大。還沒到的階段先用剪影賣個關子，點空白處關閉。
+    </p>
+  </div>`;
+plantModal.addEventListener("click", (e) => { if (e.target === plantModal) plantModal.hidden = true; });
+document.body.appendChild(plantModal);
+
+$("plantCanvas").style.cursor = "pointer";
+$("plantCanvas").addEventListener("click", () => {
+  const hours = plantHours();
+  const stage = plantStage(hours);
+  plantModal.querySelector(".plant-now").textContent =
+    `目前 Lv.${stage}（${PLANT_NAMES[stage]}），累計 ${Math.round(hours * 10) / 10} 小時`;
+
+  const grid = plantModal.querySelector(".plant-stages");
+  grid.innerHTML = "";
+  PLANT_ART.forEach((art, i) => {
+    const item = document.createElement("div");
+    item.className = "plant-stage" + (i === stage ? " current" : "") + (i > stage ? " locked" : "");
+    const cv = document.createElement("canvas");
+    cv.width = 52;   // 13 格 × 4px
+    cv.height = 56;  // 14 格 × 4px
+    drawPixelRows(cv.getContext("2d"), art.concat(PLANT_POT), 4, i > stage ? "#c9beb2" : null);
+    item.appendChild(cv);
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = i > stage
+      ? `Lv.${i}｜${PLANT_LEVELS[i]} 小時解鎖`
+      : `Lv.${i} ${PLANT_NAMES[i]}｜${PLANT_LEVELS[i]} 小時`;
+    item.appendChild(lbl);
+    grid.appendChild(item);
+  });
+  plantModal.hidden = false;
+});
 
 /* =========================================================
  * 設定：預設上下班時間、主題色調
