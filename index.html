@@ -266,6 +266,14 @@
   .plant-stage.locked { opacity: .5; }
   .plant-stage canvas { image-rendering: pixelated; }
   .plant-stage .lbl { font-size: .7rem; color: var(--ink-soft); margin-top: 4px; }
+  /* 花園：收成的植物排排站 */
+  .plant-garden { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .plant-garden .pot {
+    text-align: center; padding: 10px 4px 6px; border-radius: 12px;
+    background: color-mix(in srgb, var(--line) 35%, #fff);
+  }
+  .plant-garden canvas { image-rendering: pixelated; }
+  .plant-garden .lbl { font-size: .68rem; color: var(--ink-soft); margin-top: 2px; }
 
   /* 圖片點開放大的燈箱 */
   .lightbox {
@@ -342,6 +350,23 @@
 
   /* 打卡紀錄裡的每日投入摘要 */
   .effort-line { font-size: .78rem; color: var(--ink-soft); margin-top: 4px; white-space: normal; }
+
+  /* 紀錄內容預設收成一行，點一下展開 */
+  .note-cell.clamped .note-body {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .note-cell.clamped .note-body img,
+  .note-cell.clamped .att-thumbs,
+  .note-cell.clamped .effort-line { display: none; }
+  .note-cell .toggle-hint {
+    display: block;
+    font-size: .72rem;
+    color: var(--accent-deep);
+    margin-top: 2px;
+  }
 
   /* 打卡紀錄裡的專案連結標籤 */
   .link-tag {
@@ -438,6 +463,7 @@
   <header>
     <canvas id="plantCanvas" width="78" height="84"></canvas>
     <div id="plantLabel"></div>
+    <div id="plantQuote" style="font-size:.75rem;color:var(--ink-soft);margin-bottom:6px"></div>
     <h1>實習紀錄助手</h1>
     <p>打卡、專案計時、內容紀錄，一頁完成（資料只存在這台裝置的瀏覽器裡，不會上傳到任何地方）</p>
   </header>
@@ -533,6 +559,14 @@
   <!-- ===== 打卡紀錄表 ===== -->
   <section class="card">
     <h2>打卡紀錄</h2>
+    <div class="view-filter" style="margin:0 0 10px;padding-top:0;border-top:none">
+      <span style="font-size:.85rem;color:var(--ink-soft)">檢視區間</span>
+      <input type="date" id="recFrom">
+      <span style="color:var(--ink-soft)">～</span>
+      <input type="date" id="recTo">
+      <button id="btnRecClear" class="ghost mini">顯示全部</button>
+      <span id="recCount" style="font-size:.8rem;color:var(--ink-soft)"></span>
+    </div>
     <div class="table-scroll">
       <table>
         <thead>
@@ -1220,11 +1254,28 @@ function buildDayMap() {
   return Object.fromEntries(sorted.map((d, i) => [d, i + 1]));
 }
 
+// 展開中的紀錄（預設全部收成一行；重新整理後回到收合，屬刻意設計）
+const expandedRecords = new Set();
+
+// 打卡紀錄的檢視區間
+["recFrom", "recTo"].forEach(id => $(id).addEventListener("change", renderRecords));
+$("btnRecClear").addEventListener("click", () => {
+  $("recFrom").value = "";
+  $("recTo").value = "";
+  renderRecords();
+});
+
 function renderRecords() {
   const body = $("recordBody");
   const dayOf = buildDayMap();
   body.innerHTML = "";
-  records.forEach((r, idx) => {
+
+  const from = $("recFrom").value, to = $("recTo").value;
+  const shown = records.filter(r => (!from || r.date >= from) && (!to || r.date <= to));
+  $("recCount").textContent =
+    shown.length !== records.length ? `顯示 ${shown.length}／${records.length} 筆` : "";
+
+  shown.forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><strong>Day ${dayOf[r.date]}</strong></td>
@@ -1235,6 +1286,8 @@ function renderRecords() {
       <td class="note-cell"></td>
       <td></td>`;
     const noteCell = tr.querySelector(".note-cell");
+    if (!expandedRecords.has(r)) noteCell.classList.add("clamped");
+
     if (r.links && r.links.length) {
       r.links.forEach(l => {
         const tag = document.createElement("span");
@@ -1242,9 +1295,11 @@ function renderRecords() {
         tag.textContent = l.s ? `${l.p}｜${l.s}` : l.p;
         noteCell.appendChild(tag);
       });
-      noteCell.appendChild(document.createElement("br"));
     }
-    blocksToCell(r.content, noteCell);
+    const noteBody = document.createElement("div");
+    noteBody.className = "note-body";
+    blocksToCell(r.content, noteBody);
+    noteCell.appendChild(noteBody);
     const effort = effortText(r.date);   // 當天各專案的計時投入
     if (effort) {
       const line = document.createElement("div");
@@ -1259,6 +1314,30 @@ function renderRecords() {
       noteCell.appendChild(box);
     }
 
+    // 內容夠長（或含圖片、附件、投入）才給展開提示
+    const hasMore = blocksText(r.content).length > 25
+      || (r.content || []).some(b => b.t === "img")
+      || (r.files && r.files.length) || effort;
+    if (hasMore) {
+      const hint = document.createElement("span");
+      hint.className = "toggle-hint";
+      const paintHint = () => {
+        hint.textContent = noteCell.classList.contains("clamped") ? "⋯ 展開" : "收起";
+      };
+      paintHint();
+      noteCell.appendChild(hint);
+      noteCell.style.cursor = "pointer";
+      noteCell.addEventListener("click", (e) => {
+        if (e.target.closest("a")) return;   // 附件下載連結不觸發收合
+        // 展開狀態下點圖片是開燈箱，不要順便收合
+        if (e.target.tagName === "IMG" && !noteCell.classList.contains("clamped")) return;
+        noteCell.classList.toggle("clamped");
+        if (noteCell.classList.contains("clamped")) expandedRecords.delete(r);
+        else expandedRecords.add(r);
+        paintHint();
+      });
+    }
+
     const edit = document.createElement("button");
     edit.className = "ghost mini";
     edit.style.marginRight = "6px";
@@ -1269,15 +1348,16 @@ function renderRecords() {
     del.className = "danger";
     del.textContent = "刪除";
     del.addEventListener("click", () => {
-      if (records[idx] === editingRecord) exitEditMode();
-      records.splice(idx, 1);
+      if (r === editingRecord) exitEditMode();
+      records.splice(records.indexOf(r), 1);
       renderRecords();
     });
 
     tr.lastElementChild.append(edit, del);
     body.appendChild(tr);
   });
-  $("recordEmpty").style.display = records.length ? "none" : "block";
+  $("recordEmpty").textContent = records.length ? "這個區間內沒有紀錄。" : "還沒有紀錄，先打第一張卡吧。";
+  $("recordEmpty").style.display = shown.length ? "none" : "block";
   updateStats();
   saveState();
 }
@@ -1340,24 +1420,60 @@ const PLANT_ART = [
     "....ggG.gg...", "......G......", "..gg..G..gg..", "......G......", "......G......",
   ],
 ];
-const PLANT_LEVELS = [0, 4, 12, 24, 40, 60];   // 累計時數門檻
+const PLANT_LEVELS = [0, 4, 12, 24, 40, 60];   // 這一株的時數門檻
 const PLANT_NAMES  = ["種子", "發芽", "幼苗", "小樹", "含苞", "開花"];
 let plantFrame = 0;
 
-function plantHours() { return records.reduce((s, r) => s + r.hours, 0); }
+/* ---------- 品種：花色、綻放造型、花語與語錄（有勵志掛也有厭世掛） ---------- */
+const BLOOM_SMALL = ["......f......", ".....fFf.....", "......f......"];
+const BLOOM_FULL  = [".....fff.....", "....fFFFf....", ".....fff....."];
+const BLOOM_TWIN  = ["....f...f....", "...fFf.fFf...", "............."];
+const PLANT_SPECIES = [
+  { name: "橘光菊", f: "#e8875b", F: "#ffd27f", bloom: BLOOM_SMALL, motto: "穩穩前進",
+    quotes: ["今天投入的每一小時，都在變成年輪", "進度條不會騙人，你真的有在動", "慢慢來，比較快"],
+    doneQuotes: ["開花了！這段時間的你很了不起", "收成吧，下一株已經等不及了"] },
+  { name: "金太陽", f: "#e6b23a", F: "#8a5a2b", bloom: BLOOM_FULL, motto: "理直氣壯地發光",
+    quotes: ["上班是暫時的，學到的是自己的", "今天也把臉朝著有光的方向", "你已經比昨天的你資深一天了"],
+    doneQuotes: ["全開！亮到主管都要戴墨鏡", "收成吧，向日葵從不回頭"] },
+  { name: "粉霞櫻", f: "#e88ba7", F: "#fff0f4", bloom: BLOOM_TWIN, motto: "小步也算前進",
+    quotes: ["打卡這個動作本身就值得一朵花", "累的話先照顧自己，再照顧進度", "記錄下來的日子不會白過"],
+    doneQuotes: ["滿開！櫻花不等誰的肯定，你也不用", "收成吧，春天是自己種的"] },
+  { name: "紫夜藤", f: "#9b7fb8", F: "#e8ddf5", bloom: BLOOM_SMALL, motto: "厭世但盡責",
+    quotes: ["又上班了喔……好啦，我陪你", "上班使我枯萎，但薪水使我開花", "今天的目標：活著下班"],
+    doneQuotes: ["居然開花了，我自己都沒想到", "收成吧，反正明天還是要上班"] },
+  { name: "白霧菊", f: "#f2ede4", F: "#e6b23a", bloom: BLOOM_TWIN, motto: "冷靜的旁觀者",
+    quotes: ["我看過你加班的樣子，辛苦了", "不想努力的日子，打個卡就很夠了", "數字會替你說話，不用逞強"],
+    doneQuotes: ["開了。不驚不喜，穩穩地開了", "收成吧，低調的人先開花"] },
+];
+
+// 目前這一株的狀態存在 settings 裡（會持久化、也會跟著備份走）
+function plantState() {
+  if (!settings.plant) settings.plant = { species: 0, baseHours: 0, garden: [] };
+  return settings.plant;
+}
+function totalHoursAll() { return records.reduce((s, r) => s + r.hours, 0); }
+function plantHours() { return Math.max(0, totalHoursAll() - plantState().baseHours); }
 function plantStage(hours) {
   let stage = 0;
   PLANT_LEVELS.forEach((t, i) => { if (hours >= t) stage = i; });
   return stage;
 }
+function curSpecies() { return PLANT_SPECIES[plantState().species % PLANT_SPECIES.length]; }
+function speciesPalette(sp) { return { ...PLANT_COLORS, f: sp.f, F: sp.F }; }
+function speciesArt(sp, stage) {
+  const art = PLANT_ART[stage].slice();
+  if (stage === 5 && sp.bloom) { art[0] = sp.bloom[0]; art[1] = sp.bloom[1]; art[2] = sp.bloom[2]; }
+  return art;
+}
 
-// 把像素列畫到 canvas；mono 給一個顏色就整株畫成剪影（圖鑑裡未解鎖的階段用）
-function drawPixelRows(ctx, rows, cell, mono) {
+// 把像素列畫到 canvas；mono 給一個顏色就畫成剪影（未解鎖階段用）
+function drawPixelRows(ctx, rows, cell, mono, palette) {
+  const colors = palette || PLANT_COLORS;
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   rows.forEach((row, y) => {
     [...row].forEach((ch, x) => {
-      if (PLANT_COLORS[ch]) {
-        ctx.fillStyle = mono || PLANT_COLORS[ch];
+      if (colors[ch]) {
+        ctx.fillStyle = mono || colors[ch];
         ctx.fillRect(x * cell, y * cell, cell, cell);
       }
     });
@@ -1367,57 +1483,72 @@ function drawPixelRows(ctx, rows, cell, mono) {
 function renderPlant() {
   const canvas = $("plantCanvas");
   if (!canvas) return;
+  const ps = plantState();
+  const sp = curSpecies();
   const hours = plantHours();
   const stage = plantStage(hours);
 
-  const drawRows = PLANT_ART[stage].concat(PLANT_POT).slice();
+  const drawRows = speciesArt(sp, stage).concat(PLANT_POT).slice();
   if (plantFrame === 1) {
     // 搖擺幀：最上面有植株像素的那一行右移一格
     const top = drawRows.findIndex(r => /[gGfF]/.test(r));
     if (top >= 0) drawRows[top] = "." + drawRows[top].slice(0, -1);
   }
-  drawPixelRows(canvas.getContext("2d"), drawRows, canvas.width / 13);
+  drawPixelRows(canvas.getContext("2d"), drawRows, canvas.width / 13, null, speciesPalette(sp));
 
+  const h = Math.round(hours * 10) / 10;
   const next = PLANT_LEVELS[stage + 1];
+  const gardenNote = ps.garden.length ? `｜花園 ${ps.garden.length} 盆` : "";
   $("plantLabel").textContent = next
-    ? `Lv.${stage}｜累計 ${Math.round(hours * 10) / 10} 小時，再 ${Math.max(0, Math.round((next - hours) * 10) / 10)} 小時升級`
-    : `Lv.${stage}｜開花了！累計 ${Math.round(hours * 10) / 10} 小時`;
+    ? `${sp.name} Lv.${stage}｜這株 ${h} 小時，再 ${Math.max(0, Math.round((next - hours) * 10) / 10)} 小時升級${gardenNote}`
+    : `${sp.name}開花了！點我收成${gardenNote}`;
+
+  // 每日一句：照日期輪播，開花後換慶祝語錄
+  const pool = stage === 5 ? sp.doneQuotes : sp.quotes;
+  const idx = (new Date().getDate() + ps.species + ps.garden.length) % pool.length;
+  $("plantQuote").textContent = `「${pool[idx]}」`;
 }
 
 setInterval(() => { plantFrame = 1 - plantFrame; renderPlant(); }, 900);
 
-/* ---------- 植物圖鑑：點植物看歷代型態與升級門檻 ---------- */
+/* ---------- 植物圖鑑與花園：點植物打開 ---------- */
 const plantModal = document.createElement("div");
 plantModal.className = "plant-modal";
 plantModal.hidden = true;
 plantModal.innerHTML = `
   <div class="box">
-    <h2 style="font-size:1.05rem;margin-bottom:6px">植物圖鑑</h2>
+    <h2 style="font-size:1.05rem;margin-bottom:6px">植物圖鑑與花園</h2>
     <p class="plant-now" style="font-size:.85rem;color:var(--ink-soft)"></p>
     <div class="plant-stages"></div>
+    <p class="harvest-slot" style="margin-top:12px"></p>
+    <h2 style="font-size:.95rem;margin:14px 0 0">我的花園</h2>
+    <div class="plant-garden"></div>
     <p style="font-size:.72rem;color:var(--ink-soft);margin-top:10px">
-      植物跟著累計打卡時數長大。還沒到的階段先用剪影賣個關子，點空白處關閉。
+      植物跟著這一株期間的打卡時數長大，開花後可以收成進花園、種下一個品種。點空白處關閉。
     </p>
   </div>`;
 plantModal.addEventListener("click", (e) => { if (e.target === plantModal) plantModal.hidden = true; });
 document.body.appendChild(plantModal);
 
-$("plantCanvas").style.cursor = "pointer";
-$("plantCanvas").addEventListener("click", () => {
+function openPlantModal() {
+  const ps = plantState();
+  const sp = curSpecies();
   const hours = plantHours();
   const stage = plantStage(hours);
   plantModal.querySelector(".plant-now").textContent =
-    `目前 Lv.${stage}（${PLANT_NAMES[stage]}），累計 ${Math.round(hours * 10) / 10} 小時`;
+    `目前種的是「${sp.name}」（花語：${sp.motto}）Lv.${stage}，這株 ${Math.round(hours * 10) / 10} 小時`;
 
+  // 六個成長階段（未到的用剪影）
   const grid = plantModal.querySelector(".plant-stages");
   grid.innerHTML = "";
-  PLANT_ART.forEach((art, i) => {
+  PLANT_ART.forEach((_, i) => {
     const item = document.createElement("div");
     item.className = "plant-stage" + (i === stage ? " current" : "") + (i > stage ? " locked" : "");
     const cv = document.createElement("canvas");
     cv.width = 52;   // 13 格 × 4px
     cv.height = 56;  // 14 格 × 4px
-    drawPixelRows(cv.getContext("2d"), art.concat(PLANT_POT), 4, i > stage ? "#c9beb2" : null);
+    drawPixelRows(cv.getContext("2d"), speciesArt(sp, i).concat(PLANT_POT), 4,
+      i > stage ? "#c9beb2" : null, speciesPalette(sp));
     item.appendChild(cv);
     const lbl = document.createElement("div");
     lbl.className = "lbl";
@@ -1427,8 +1558,58 @@ $("plantCanvas").addEventListener("click", () => {
     item.appendChild(lbl);
     grid.appendChild(item);
   });
+
+  // 開花才出現收成按鈕
+  const slot = plantModal.querySelector(".harvest-slot");
+  slot.innerHTML = "";
+  if (stage === 5) {
+    const btn = document.createElement("button");
+    btn.textContent = `收成「${sp.name}」，種下一株`;
+    btn.addEventListener("click", () => {
+      ps.garden.push({ sp: ps.species, date: fmtDate(new Date()), hours: Math.round(hours * 10) / 10 });
+      // 下一株優先選還沒種過的品種，全部種過就照順序輪
+      const grownSet = new Set(ps.garden.map(g => g.sp));
+      const fresh = PLANT_SPECIES.map((_, i) => i).filter(i => !grownSet.has(i));
+      ps.species = fresh.length ? fresh[0] : (ps.species + 1) % PLANT_SPECIES.length;
+      ps.baseHours = totalHoursAll();   // 新株從 0 小時開始長
+      saveState();
+      renderPlant();
+      openPlantModal();   // 重畫圖鑑成新品種
+    });
+    slot.appendChild(btn);
+  }
+
+  // 花園：收成過的植物排排站
+  const garden = plantModal.querySelector(".plant-garden");
+  garden.innerHTML = "";
+  if (!ps.garden.length) {
+    garden.innerHTML = `<p class="empty-hint" style="grid-column:1/-1">還沒有收成的植物，第一株開花後就能收進來。</p>`;
+  } else {
+    ps.garden.forEach(g => {
+      const gsp = PLANT_SPECIES[g.sp % PLANT_SPECIES.length];
+      const pot = document.createElement("div");
+      pot.className = "pot";
+      const cv = document.createElement("canvas");
+      cv.width = 52;
+      cv.height = 56;
+      drawPixelRows(cv.getContext("2d"), speciesArt(gsp, 5).concat(PLANT_POT), 4, null, speciesPalette(gsp));
+      pot.appendChild(cv);
+      const lbl = document.createElement("div");
+      lbl.className = "lbl";
+      lbl.textContent = `${gsp.name}｜${gsp.motto}`;
+      const lbl2 = document.createElement("div");
+      lbl2.className = "lbl";
+      lbl2.textContent = `${g.date}・${g.hours}h`;
+      pot.append(lbl, lbl2);
+      garden.appendChild(pot);
+    });
+  }
+
   plantModal.hidden = false;
-});
+}
+
+$("plantCanvas").style.cursor = "pointer";
+$("plantCanvas").addEventListener("click", openPlantModal);
 
 /* =========================================================
  * 設定：預設上下班時間、主題色調
